@@ -1,0 +1,116 @@
+---
+title: 'Predictive HW'
+author: "David Kariuki"
+date: "2024-03-06"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r cars}
+setwd('C:\\Users\\david\\Downloads')
+
+data_init <- read.csv('logistic.csv')
+library(rpart)
+library(maptree)
+library(dplyr)
+library(plyr)
+library(ROCR)
+
+# The data has a couple of null entries that are not useful to our analysis
+# We omit them before doing any EDA
+data <- na.omit(mutate_all(data_init, ~ifelse(. %in% c('n/a','NULL', ''),NA,.)))
+# View(data)
+names(data)
+summary(data)
+str(data)
+
+# Only interested in those that were enrolled
+data_enrolled <- data[data$enrolled == 1,]
+length(data_enrolled)
+
+# Convert 'ACT' and 'HSGPA' columns to numeric
+data_enrolled$ACT <- as.numeric(as.character(data_enrolled$ACT))
+data_enrolled$HSGPA <- as.numeric(as.character(data_enrolled$HSGPA))
+
+# Exploratory Plots
+boxplot(ACT ~ Graduated, data = data_enrolled)
+hist(data_enrolled$ACT, xlab = 'ACT Scores', main = 'Histogram of ACT Scores')
+hist(data_enrolled$HSGPA, xlim = range(0,5), breaks = seq(0, 1000, by = 1), 
+     xlab = 'HSGPA', main ='Histogram of HSGPA')
+plot(data_enrolled$ACT, data_enrolled$HSGPA, ylim = range(0,5), 
+     ylab = 'HSGPA', xlab = 'ACT', main = 'Scatterplot of HSGPA vs ACT')
+cor(data_enrolled$ACT, data_enrolled$HSGPA)
+
+
+#Create a table for Statistics of Those that were enrolled
+ddply(data_enrolled,~Graduated,
+      summarise,MeanACT=mean(ACT),
+      MeanHSGPA=mean(HSGPA) )
+
+table(data_enrolled$Cohort)
+
+#Logistic Regression Model 1
+logModel_1=glm(Graduated~HSGPA+ACT, data=data_enrolled,
+              family=binomial)
+summary(logModel_1)
+
+logModel_2=glm(Graduated~HSGPA+ACT+Cohort, data=data_enrolled,
+               family=binomial)
+summary(logModel_2)
+
+
+
+tree_1 = rpart(Graduated~HSGPA+ACT,data=data_enrolled)
+draw.tree(tree_1, cex=.6, 
+           nodeinfo=TRUE, units="GradRate",
+           cases="obs",
+           digits=1, print.levels=TRUE,
+           new=TRUE)
+pruned=clip.rpart(tree_1,best=7)
+pruned
+draw.tree(pruned, cex=.6, 
+           nodeinfo=TRUE, units="GradRate",
+           cases="obs",
+           digits=1, print.levels=TRUE,
+           new=TRUE)
+#Calculating log odds and fitting probability
+log_odds = predict(logModel_1, newdata = data_enrolled)
+log_odds[2:7]
+logistic = function(x){1/(1+exp(-x))}
+prob_graduating = logistic(log_odds)
+prob_graduating[2:7]
+
+#Finding the error rate
+cut_off = 0.5
+predicted_vals = ifelse(prob_graduating<cut_off, 0,1)
+original_vals = data_enrolled$Graduated
+#confusion matrix
+conf_matrix = table(original_vals,predicted_vals)
+conf_matrix
+
+#how do the probabilities predicted compare between tree and glm models?
+treeprediction=predict(tree_1)
+treeprediction
+
+mytreepreds=prediction(treeprediction, data_enrolled$Graduated, label.ordering = NULL)
+#mytreepreds
+
+tree.perf = performance(mytreepreds, measure = "tpr", x.measure = "fpr")
+plot(tree.perf, main = 'ROC Curve for tree prediction')
+abline(0,1,lty=2)
+auc.perf = performance(mytreepreds, measure = "auc")
+auc.perf@y.values
+```
+
+
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
